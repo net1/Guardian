@@ -15,6 +15,30 @@ to small and community run infrastructures.
 
 ---
 
+## Table of Contents
+
+- [Role in the Mailuminati Ecosystem](#role-in-the-mailuminati-ecosystem)
+- [Local Intelligence vs Shared Intelligence](#local-intelligence-vs-shared-intelligence)
+  - [Local Intelligence](#local-intelligence)
+  - [Shared Intelligence via the Oracle](#shared-intelligence-via-the-oracle)
+- [How It Works](#how-it-works)
+  - [1. Local Analysis](#1-local-analysis)
+  - [2. Local Proximity Detection](#2-local-proximity-detection)
+  - [3. Oracle Confirmation (When Needed)](#3-oracle-confirmation-when-needed)
+  - [4. Learning and Feedback](#4-learning-and-feedback)
+- [Design Goals](#design-goals)
+- [Prerequisites](#prerequisites)
+  - [Mandatory](#mandatory)
+  - [Optional but Recommended](#optional-but-recommended)
+- [Installation](#installation)
+  - [Method 1: Install from GitHub Archive (Recommended)](#method-1-install-from-github-archive-recommended)
+  - [Method 2: Install using Git, developer friendly](#method-2-install-using-git-developer-friendly)
+- [Deployment Model](#deployment-model)
+- [Relationship to Other Components](#relationship-to-other-components)
+- [License](#license)
+
+---
+
 ## Role in the Mailuminati Ecosystem
 
 Guardian is responsible for:
