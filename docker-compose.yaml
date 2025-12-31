@@ -1,0 +1,40 @@
+services:
+  
+  mi-guardian:
+    build:
+      context: .
+      dockerfile: Dockerfile.Mailuminati-Guardian
+    restart: unless-stopped
+    expose:
+      - "1133"
+    ports:
+      - "1133:1133"
+    environment:
+      - REDIS_HOST=mi-redis
+      - REDIS_PORT=6379
+    depends_on:
+      mi-redis:
+        condition: service_healthy
+    networks:
+      - Mailuminati
+
+  mi-redis:
+    image: redis:latest
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "", "--appendfsync", "everysec"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - Mailuminati
+
+volumes:
+  redis_data:
+
+networks:
+  Mailuminati:
+    external: true
