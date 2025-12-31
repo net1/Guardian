@@ -518,11 +518,11 @@ show_installation_options() {
     echo -e "\n--------------------------------------------------"
     log_info "Available installation methods:"
     if [ "$docker_possible" = "1" ] && [ "$source_possible" = "1" ]; then
-        log_success "Docker Compose and build from source"
+        log_success "Docker Compose and Standalone build from source"
     elif [ "$docker_possible" = "1" ]; then
         log_success "Docker Compose"
     elif [ "$source_possible" = "1" ]; then
-        log_success "Build from source"
+        log_success "Build Standalone from source"
     else
         log_error "None"
     fi
@@ -537,9 +537,9 @@ show_installation_options() {
     fi
 
     if [ "$source_possible" = "1" ]; then
-        echo "2) Build from source (requires Go)"
+        echo "2) Build Standalone from source (requires Go)"
     else
-        echo "2) Build from source (Unavailable)"
+        echo "2) Build Standalone from source (Unavailable)"
     fi
     echo "3) Exit"
 
@@ -590,10 +590,10 @@ show_installation_options() {
                     continue
                 fi
                 if ! command_exists go; then
-                    log_error "Go is not installed. Cannot build from source."
+                    log_error "Go is not installed. Cannot build Standalone from source."
                     log_info "Please install Go or choose the Docker installation method."
                 elif ! command_exists redis-server && ! command_exists redis-cli; then
-                    log_error "Redis is not installed. Cannot proceed with source build."
+                    log_error "Redis is not installed. Cannot proceed with Standalone build."
                     log_info "Please install Redis or choose the Docker installation method."
                 else
                     # --- TLSH binary check and build logic ---
@@ -746,7 +746,7 @@ main() {
         echo -e "\n--------------------------------------------------"
         log_error "No installation method is possible with the current dependencies."
         log_info "For Docker Compose: install Docker + Docker Compose and run from a folder containing docker-compose.yaml."
-        log_info "For build from source: install Go + Redis."
+        log_info "For Standalone build from source: install Go + Redis."
         echo -e "--------------------------------------------------"
         exit 1
     fi
