@@ -2,6 +2,10 @@
   <img src="./assets/images/Guardian_M.png" alt="Logo Guardian" width="400">
 </div>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.25-blue" alt="Go Version">
+</p>
+
 # Mailuminati Guardian
 
 **Guardian** is the local detection and enforcement component of the Mailuminati ecosystem.
