@@ -38,6 +38,7 @@ to small and community run infrastructures.
   - [Method 1: Install from GitHub Archive (Recommended)](#method-1-install-from-github-archive-recommended)
   - [Method 2: Install using Git, developer friendly](#method-2-install-using-git-developer-friendly)
 - [Deployment Model](#deployment-model)
+- [API Endpoints](#api-endpoints)
 - [Relationship to Other Components](#relationship-to-other-components)
 - [License](#license)
 
@@ -269,6 +270,99 @@ It exposes endpoints such as:
 - `/analyze`
 - `/report`
 - `/status`
+
+---
+
+## API Endpoints
+
+Base URL: `http://<guardian-host>:1133`
+
+### GET /status
+
+Health/info endpoint used by the installer post-start check.
+
+```bash
+curl -sS http://localhost:1133/status | jq
+```
+
+Example response:
+
+```json
+{
+  "node_id": "6c0a5e16-2b32-4f86-9b3d-2b2e3df5c7d8",
+  "current_seq": 0,
+  "version": "0.3.2",
+  "tlsh_binary": "/usr/local/bin/tlsh"
+}
+```
+
+### POST /analyze
+
+Analyzes an email provided as raw RFC822/MIME bytes (the full message). Maximum request size is 15 MB.
+
+Notes:
+- If the email has no `Message-ID` header, Guardian will still analyze it, but `/report` will not be able to find its scan data later.
+- The response includes the computed TLSH signatures under `hashes`.
+
+```bash
+curl -sS -X POST \
+  -H 'Content-Type: message/rfc822' \
+  --data-binary @message.eml \
+  http://localhost:1133/analyze | jq
+```
+
+Example response:
+
+```json
+{
+  "action": "allow",
+  "proximity_match": false,
+  "hashes": [
+    "T1A9B0E0F2D3C4B5A6..."
+  ]
+}
+```
+
+Possible fields:
+- `action`: `allow` | `spam`
+- `label` (optional): e.g. `local_spam`
+- `proximity_match`: boolean
+- `distance` (optional): integer (TLSH distance when applicable)
+- `hashes` (optional): array of TLSH signatures computed for body/attachments
+
+### POST /report
+
+Reports a previously scanned email by `Message-ID` (as seen in the original email headers). Guardian will:
+- Apply **local learning** immediately when `report_type` is `spam`
+- Forward the report to the Oracle
+
+Request body:
+
+```json
+{
+  "message-id": "<your-message-id@example>",
+  "report_type": "spam"
+}
+```
+
+```bash
+curl -sS -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"message-id":"<your-message-id@example>","report_type":"spam"}' \
+  http://localhost:1133/report
+```
+
+Notes:
+- If Guardian has no stored scan data for this `Message-ID`, it returns `404 No scan data found`.
+- The response body/status code are proxied from the Oracle when reachable.
+
+### Configuration (env vars)
+
+Guardian’s API behavior depends on these environment variables:
+
+- `TLSH_BIN` (default: `/usr/local/bin/tlsh`, required at startup)
+- `REDIS_HOST` (default: `localhost`)
+- `REDIS_PORT` (default: `6379`)
 
 ---
 
