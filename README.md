@@ -277,6 +277,11 @@ It exposes endpoints such as:
 
 Base URL: `http://<guardian-host>:1133`
 
+> **Warning (Security)**
+>
+> Guardian listens on port **1133** and the API provides **no authentication**.
+> It is therefore strongly recommended to **not expose** `:1133` to the Internet and to **block external access** with a firewall (allow only `localhost` or your internal network) to prevent fraudulent use.
+
 ### GET /status
 
 Health/info endpoint used by the installer post-start check.
