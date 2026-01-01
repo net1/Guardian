@@ -639,7 +639,7 @@ show_installation_options() {
     fi
 
     if [ "$source_possible" = "1" ]; then
-        echo "2) Build Standalone from source (requires Go)"
+        echo "2) Build Standalone from source (requires Go, Redis, cmake)"
     else
         echo "2) Build Standalone from source (Unavailable)"
     fi
@@ -705,6 +705,9 @@ show_installation_options() {
                 elif ! command_exists redis-server && ! command_exists redis-cli; then
                     log_error "Redis is not installed. Cannot proceed with Standalone build."
                     log_info "Please install Redis or choose the Docker installation method."
+                elif ! command_exists cmake; then
+                    log_error "cmake is not installed. Cannot proceed with Standalone build."
+                    log_info "Please install cmake or choose the Docker installation method."
                 else
                     # --- TLSH binary check and build logic ---
                     TLSH_BIN_PATH="${TLSH_BIN:-/usr/local/bin/tlsh}"
@@ -857,7 +860,7 @@ main() {
 
     source_possible=0
     if command_exists go; then
-        if command_exists redis-server || command_exists redis-cli; then
+        if (command_exists redis-server || command_exists redis-cli) && command_exists cmake; then
             source_possible=1
         fi
     fi
@@ -875,7 +878,7 @@ main() {
         echo -e "\n--------------------------------------------------"
         log_error "No installation method is possible with the current dependencies."
         log_info "For Docker Compose: install Docker + Docker Compose and run from a folder containing docker-compose.yaml."
-        log_info "For Standalone build from source: install Go + Redis."
+        log_info "For Standalone build from source: install Go + Redis + cmake."
         echo -e "--------------------------------------------------"
         exit 1
     fi
