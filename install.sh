@@ -35,6 +35,16 @@ log_error() {
     echo -e "${COLOR_RED}[ERROR]${COLOR_RESET} $1"
 }
 
+# Directory where this installer resides (so relative paths work even if run from elsewhere)
+INSTALLER_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+# Absolute path to compose file (so Docker can be launched from anywhere)
+COMPOSE_FILE="${INSTALLER_DIR}/docker-compose.yaml"
+
+docker_compose_v2_available() {
+    $DOCKER_SUDO docker compose version &> /dev/null
+}
+
 # --- CLI options / feature toggles ---
 # Defaults keep existing behavior.
 ENABLE_RSPAMD_INTEGRATION=1
@@ -646,8 +656,8 @@ show_installation_options() {
                     continue
                 fi
                 log_info "Proceeding with Docker installation..."
-                if [ -f "docker-compose.yaml" ]; then
-                    log_info "Found 'docker-compose.yaml'."
+                if [ -f "$COMPOSE_FILE" ]; then
+                    log_info "Found '$COMPOSE_FILE'."
 
                     log_info "Ensuring 'Mailuminati' network exists..."
                     if ! $DOCKER_SUDO docker network inspect Mailuminati &> /dev/null; then
@@ -663,7 +673,15 @@ show_installation_options() {
                     fi
 
                     log_info "Building and starting services with Docker Compose..."
-                    if $DOCKER_SUDO docker compose up -d --build; then
+                    if docker_compose_v2_available; then
+                        compose_up_ok=0
+                        $DOCKER_SUDO docker compose -f "$COMPOSE_FILE" --project-directory "$INSTALLER_DIR" up -d --build && compose_up_ok=1
+                    else
+                        compose_up_ok=0
+                        $DOCKER_SUDO docker-compose -f "$COMPOSE_FILE" up -d --build && compose_up_ok=1
+                    fi
+
+                    if [ "$compose_up_ok" = "1" ]; then
                         log_success "Mailuminati Guardian has been started successfully."
                         log_success "The project is now listening on port 1133."
                         post_start_flow
@@ -671,8 +689,8 @@ show_installation_options() {
                         log_error "Failed to start services with Docker Compose. Please check the output above."
                     fi
                 else
-                    log_error "'docker-compose.yaml' not found in the current directory."
-                    log_info "Please place the file in the same directory as the installer or run the installer from the correct directory."
+                    log_error "Cannot find compose file: $COMPOSE_FILE"
+                    log_info "Please run the installer from the Guardian project root, or ensure docker-compose.yaml exists next to install.sh."
                 fi
                 break
                 ;;
@@ -729,13 +747,14 @@ show_installation_options() {
                         rm -rf "$TMP_BUILD_DIR"
                     fi
                     # --- End TLSH logic ---
-                    if [ -f "./mi_guardian/main.go" ]; then
+                    if [ -f "${INSTALLER_DIR}/mi_guardian/main.go" ]; then
                         log_info "Initializing Go module in mi_guardian..."
-                        cd mi_guardian
+                        pushd "${INSTALLER_DIR}/mi_guardian" >/dev/null || { log_error "Failed to enter ${INSTALLER_DIR}/mi_guardian"; exit 1; }
                         go mod init mailuminati-guardian || log_info "Go module already initialized."
                         log_info "Tidying Go modules..."
                         go mod tidy
                         log_info "Building the binary..."
+                        started_ok=0
                         if go build; then
                             log_success "Build complete. The binary is available in the mi_guardian directory."
                             # Move binary to /opt/Mailuminati
@@ -776,12 +795,13 @@ EOF
                             sudo systemctl restart mailuminati-guardian
                             log_success "Mailuminati Guardian service started and enabled."
                             log_success "The project is now listening on port 1133."
-                            cd ..
-                            post_start_flow
+                            started_ok=1
                         else
                             log_error "Build failed. Please check the Go output above."
                         fi
-                        cd ..
+
+                        popd >/dev/null || true
+                        [ "$started_ok" = "1" ] && post_start_flow
                     else
                         log_error "No 'main.go' file found in the 'mi_guardian' directory. Please check your source tree."
                     fi
@@ -805,6 +825,12 @@ main() {
     echo -e " Mailuminati Guardian Dependency Checker"
     echo -e "=================================================="
 
+    # Ensure we run from the project root (relative paths: mi_guardian/, docker-compose.yaml, etc.)
+    if ! cd "$INSTALLER_DIR"; then
+        log_error "Failed to change directory to installer location: $INSTALLER_DIR"
+        exit 1
+    fi
+
     # Allow env vars to override defaults
     ENABLE_RSPAMD_INTEGRATION="${ENABLE_RSPAMD_INTEGRATION:-1}"
     ENABLE_SPAMASSASSIN_INTEGRATION="${ENABLE_SPAMASSASSIN_INTEGRATION:-1}"
@@ -823,7 +849,7 @@ main() {
     docker_possible=0
     if command_exists docker; then
         if $DOCKER_SUDO docker compose version &> /dev/null || command_exists docker-compose; then
-            if [ -f "docker-compose.yaml" ]; then
+            if [ -f "$COMPOSE_FILE" ]; then
                 docker_possible=1
             fi
         fi
