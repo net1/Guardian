@@ -243,6 +243,92 @@ print_spamassassin_integration_instructions() {
     echo -e "--------------------------------------------------\n"
 }
 
+detect_dovecot_paths() {
+    DOVECOT_CONF_DIR=""
+    DOVECOT_SIEVE_CONF=""
+
+    DOVECOT_CONF_DIR="$(first_existing_dir \
+        "/etc/dovecot" \
+        "/usr/local/etc/dovecot" \
+        "/opt/dovecot/etc/dovecot" \
+    )" || true
+
+    if [ -n "$DOVECOT_CONF_DIR" ]; then
+        if [ -f "${DOVECOT_CONF_DIR}/conf.d/90-sieve.conf" ]; then
+            DOVECOT_SIEVE_CONF="${DOVECOT_CONF_DIR}/conf.d/90-sieve.conf"
+        elif [ -f "${DOVECOT_CONF_DIR}/90-sieve.conf" ]; then
+             DOVECOT_SIEVE_CONF="${DOVECOT_CONF_DIR}/90-sieve.conf"
+        fi
+    fi
+}
+
+configure_dovecot_integration() {
+    detect_dovecot_paths
+    
+    local sudo_cmd=""
+    if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+        sudo_cmd="sudo"
+    fi
+
+    echo -e "\n--------------------------------------------------"
+    log_info "Dovecot integration (interactive)"
+    log_info "Detected config dir: ${DOVECOT_CONF_DIR:-<unknown>}"
+    log_info "Detected sieve conf: ${DOVECOT_SIEVE_CONF:-<not found>}"
+    echo "--------------------------------------------------"
+
+    if [ -z "$DOVECOT_SIEVE_CONF" ]; then
+        log_warning "Could not find 90-sieve.conf. Skipping automatic configuration."
+        return 1
+    fi
+
+    log_info "Checking $DOVECOT_SIEVE_CONF for required plugins..."
+    
+    if grep -q "sieve_plugins.*sieve_imapsieve" "$DOVECOT_SIEVE_CONF" && \
+       grep -q "sieve_plugins.*sieve_extprograms" "$DOVECOT_SIEVE_CONF"; then
+        log_success "sieve_imapsieve and sieve_extprograms seem to be already enabled."
+        return 0
+    fi
+
+    echo
+    log_info "We need to ensure 'sieve_imapsieve' and 'sieve_extprograms' are in 'sieve_plugins'."
+    if ! confirm_yes_no "Attempt to patch $DOVECOT_SIEVE_CONF automatically?" "y"; then
+        log_info "Skipping. Please manually ensure: plugin { sieve_plugins = sieve_imapsieve sieve_extprograms }"
+        return 0
+    fi
+
+    $sudo_cmd cp "$DOVECOT_SIEVE_CONF" "${DOVECOT_SIEVE_CONF}.bak.$(date +%s)"
+    log_info "Backed up to ${DOVECOT_SIEVE_CONF}.bak.$(date +%s)"
+
+    if grep -q "^[[:space:]]*sieve_plugins[[:space:]]*=" "$DOVECOT_SIEVE_CONF"; then
+        log_info "sieve_plugins directive found. Appending missing plugins..."
+        if ! grep -q "sieve_imapsieve" "$DOVECOT_SIEVE_CONF"; then
+             $sudo_cmd sed -i 's/^\([[:space:]]*sieve_plugins[[:space:]]*=[^#]*\)/\1 sieve_imapsieve/' "$DOVECOT_SIEVE_CONF"
+             log_success "Added sieve_imapsieve"
+        fi
+        if ! grep -q "sieve_extprograms" "$DOVECOT_SIEVE_CONF"; then
+             $sudo_cmd sed -i 's/^\([[:space:]]*sieve_plugins[[:space:]]*=[^#]*\)/\1 sieve_extprograms/' "$DOVECOT_SIEVE_CONF"
+             log_success "Added sieve_extprograms"
+        fi
+    else
+        if grep -q "^plugin[[:space:]]*{" "$DOVECOT_SIEVE_CONF"; then
+             log_info "Adding sieve_plugins directive to existing plugin block..."
+             $sudo_cmd sed -i '/^plugin[[:space:]]*{/a \  sieve_plugins = sieve_imapsieve sieve_extprograms' "$DOVECOT_SIEVE_CONF"
+             log_success "Added sieve_plugins directive."
+        else
+             log_info "No plugin block found. Appending one..."
+             echo -e "\nplugin {\n  sieve_plugins = sieve_imapsieve sieve_extprograms\n}\n" | $sudo_cmd tee -a "$DOVECOT_SIEVE_CONF" >/dev/null
+             log_success "Appended plugin block."
+        fi
+    fi
+    
+    log_info "Reloading Dovecot..."
+    if command_exists systemctl; then
+        $sudo_cmd systemctl reload dovecot
+    elif command_exists service; then
+        $sudo_cmd service dovecot reload
+    fi
+}
+
 offer_filter_integration() {
     if [ "${OFFER_FILTER_INTEGRATION}" != "1" ]; then
         log_info "Skipping mail filter integration (disabled by option/env)."
@@ -251,62 +337,83 @@ offer_filter_integration() {
 
     local has_rspamd=0
     local has_sa=0
+    local has_dovecot=0
+
     if [ "${ENABLE_RSPAMD_INTEGRATION}" = "1" ] && command_exists rspamd; then
         has_rspamd=1
     fi
     if [ "${ENABLE_SPAMASSASSIN_INTEGRATION}" = "1" ] && command_exists spamassassin; then
         has_sa=1
     fi
+    if command_exists dovecot; then
+        has_dovecot=1
+    fi
 
-    if [ "$has_rspamd" != "1" ] && [ "$has_sa" != "1" ]; then
-        log_info "No supported mail filter detected (rspamd/spamassassin). Skipping integration guidance."
+    if [ "$has_rspamd" != "1" ] && [ "$has_sa" != "1" ] && [ "$has_dovecot" != "1" ]; then
+        log_info "No supported mail filter detected (rspamd/spamassassin/dovecot). Skipping integration guidance."
         return 0
     fi
 
-    echo -e "\n--------------------------------------------------"
-    log_info "Optional: install mail filter integration now?"
-    echo "--------------------------------------------------"
+    # --- Step 1: Spam Filter Integration ---
+    if [ "$has_rspamd" = "1" ] || [ "$has_sa" = "1" ]; then
+        echo -e "\n--------------------------------------------------"
+        log_info "Step 1: Mail Filter Integration"
+        echo "--------------------------------------------------"
 
-    local default_choice="3"
-    if [ "$has_rspamd" = "1" ]; then
-        echo "1) Rspamd integration (recommended)"
-        default_choice="1"
-    else
-        echo "1) Rspamd integration (unavailable)"
+        local default_choice="3"
+        if [ "$has_rspamd" = "1" ]; then
+            echo "1) Rspamd integration (recommended)"
+            default_choice="1"
+        else
+            echo "1) Rspamd integration (unavailable)"
+        fi
+
+        if [ "$has_sa" = "1" ]; then
+            echo "2) SpamAssassin integration"
+            [ "$default_choice" = "3" ] && default_choice="2"
+        else
+            echo "2) SpamAssassin integration (unavailable)"
+        fi
+
+        echo "3) Skip filter integration"
+
+        while true; do
+            read -r -p "Enter your choice [${default_choice}]: " choice
+            choice=${choice:-$default_choice}
+            case "$choice" in
+                1)
+                    [ "$has_rspamd" = "1" ] || { log_error "Rspamd is not available on this system."; continue; }
+                    configure_rspamd_integration
+                    break
+                    ;;
+                2)
+                    [ "$has_sa" = "1" ] || { log_error "SpamAssassin is not available on this system."; continue; }
+                    print_spamassassin_integration_instructions
+                    break
+                    ;;
+                3)
+                    log_info "Skipping filter integration."
+                    break
+                    ;;
+                *)
+                    log_error "Invalid option: $choice"
+                    ;;
+            esac
+        done
     fi
 
-    if [ "$has_sa" = "1" ]; then
-        echo "2) SpamAssassin integration"
-        [ "$default_choice" = "3" ] && default_choice="2"
-    else
-        echo "2) SpamAssassin integration (unavailable)"
+    # --- Step 2: Dovecot Integration ---
+    if [ "$has_dovecot" = "1" ]; then
+        echo -e "\n--------------------------------------------------"
+        log_info "Step 2: Dovecot Integration (Sieve)"
+        echo "--------------------------------------------------"
+        
+        if confirm_yes_no "Configure Dovecot Sieve plugins (sieve_imapsieve, sieve_extprograms)?" "y"; then
+             configure_dovecot_integration
+        else
+             log_info "Skipping Dovecot integration."
+        fi
     fi
-
-    echo "3) Skip"
-
-    while true; do
-        read -r -p "Enter your choice [${default_choice}]: " choice
-        choice=${choice:-$default_choice}
-        case "$choice" in
-            1)
-                [ "$has_rspamd" = "1" ] || { log_error "Rspamd is not available on this system."; continue; }
-                configure_rspamd_integration
-                break
-                ;;
-            2)
-                [ "$has_sa" = "1" ] || { log_error "SpamAssassin is not available on this system."; continue; }
-                print_spamassassin_integration_instructions
-                break
-                ;;
-            3)
-                log_info "Skipping integration."
-                break
-                ;;
-            *)
-                log_error "Invalid option: $choice"
-                ;;
-        esac
-    done
 }
 
 post_start_flow() {
