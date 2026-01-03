@@ -104,8 +104,9 @@ func main() {
 	http.HandleFunc("/report", logRequestHandler(reportHandler))
 	http.HandleFunc("/status", logRequestHandler(statusHandler))
 
-	log.Printf("[Mailuminati] MTA bridge ready on :1133")
-	log.Fatal(http.ListenAndServe(":1133", nil))
+	port := getEnv("PORT", "1133")
+	log.Printf("[Mailuminati] MTA bridge ready on :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
 // --- Handlers ---
