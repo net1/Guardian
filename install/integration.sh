@@ -348,6 +348,39 @@ configure_dovecot_integration() {
         fi
     fi
 
+    # --- Ensure sieve_extensions has +copy +imap4flags +vnd.dovecot.pipe ---
+    log_info "Checking sieve_extensions for required extensions..."
+    local required_exts=("+copy" "+imap4flags" "+vnd.dovecot.pipe")
+    local exts_changed=0
+
+    if grep -q "^[[:space:]]*sieve_extensions[[:space:]]*=" "$DOVECOT_SIEVE_CONF"; then
+        for ext in "${required_exts[@]}"; do
+            # Escape + for grep (just to be safe, though + is literal in BRE)
+            local escaped_ext="${ext//+/\\+}"
+            if ! grep -q "sieve_extensions.*$escaped_ext" "$DOVECOT_SIEVE_CONF"; then
+                 log_info "Adding missing extension: $ext"
+                 $sudo_cmd sed -i "s/^\([[:space:]]*sieve_extensions[[:space:]]*=[^#]*\)/\1 $ext/" "$DOVECOT_SIEVE_CONF"
+                 exts_changed=1
+            fi
+        done
+    else
+        log_info "sieve_extensions directive not found. Adding it..."
+        if grep -q "^[[:space:]]*sieve_plugins[[:space:]]*=" "$DOVECOT_SIEVE_CONF"; then
+             $sudo_cmd sed -i "/^[[:space:]]*sieve_plugins[[:space:]]*=/a \  sieve_extensions = +copy +imap4flags +vnd.dovecot.pipe" "$DOVECOT_SIEVE_CONF"
+        elif grep -q "^plugin[[:space:]]*{" "$DOVECOT_SIEVE_CONF"; then
+             $sudo_cmd sed -i '/^plugin[[:space:]]*{/a \  sieve_extensions = +copy +imap4flags +vnd.dovecot.pipe' "$DOVECOT_SIEVE_CONF"
+        else
+             echo -e "\nplugin {\n  sieve_extensions = +copy +imap4flags +vnd.dovecot.pipe\n}\n" | $sudo_cmd tee -a "$DOVECOT_SIEVE_CONF" >/dev/null
+        fi
+        exts_changed=1
+    fi
+    
+    if [ "$exts_changed" = "1" ]; then
+        log_success "Updated sieve_extensions."
+    else
+        log_success "sieve_extensions already configured correctly."
+    fi
+
     # --- Configure IMAPSieve Rules ---
     log_info "Configuring IMAPSieve rules for Spam/Ham reporting..."
 
