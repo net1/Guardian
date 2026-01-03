@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/glaslos/tlsh"
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"github.com/jhillyerd/enmime"
@@ -409,6 +410,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 // --- Internal TLSH logic ---
 
 func computeLocalTLSH(content string) (string, error) {
+	// 1. Existing method (C binary)
 	tmpFile, err := os.CreateTemp("", "mi_tlsh_*")
 	if err != nil {
 		return "", err
@@ -423,7 +425,26 @@ func computeLocalTLSH(content string) (string, error) {
 	}
 	tmpFile.Sync()
 
-	return computeDigest(tmpFile.Name())
+	cHash, err := computeDigest(tmpFile.Name())
+	if err != nil {
+		return "", err
+	}
+
+	// 2. New method (Go library) for comparison
+	goHashStruct, goErr := tlsh.HashBytes([]byte(content))
+
+	if goErr != nil {
+		log.Printf("[TLSH-COMPARE] Go lib error: %v", goErr)
+	} else {
+		goHash := goHashStruct.String()
+		if cHash != goHash {
+			log.Printf("[TLSH-COMPARE] MISMATCH! C-Bin: %s | Go-Lib: %s", cHash, goHash)
+		} else {
+			log.Printf("[TLSH-COMPARE] MATCH: %s", cHash)
+		}
+	}
+
+	return cHash, nil
 }
 
 func computeDigest(path string) (string, error) {
