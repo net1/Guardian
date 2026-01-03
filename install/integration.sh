@@ -277,8 +277,37 @@ configure_dovecot_integration() {
     echo "--------------------------------------------------"
 
     if [ -z "$DOVECOT_SIEVE_CONF" ]; then
-        log_warning "Could not find 90-sieve.conf. Skipping automatic configuration."
-        return 1
+        log_warning "Could not find 90-sieve.conf."
+        
+        local target_dir=""
+        if [ -n "$DOVECOT_CONF_DIR" ]; then
+            if [ -d "${DOVECOT_CONF_DIR}/conf.d" ]; then
+                target_dir="${DOVECOT_CONF_DIR}/conf.d"
+            else
+                target_dir="${DOVECOT_CONF_DIR}"
+            fi
+        fi
+
+        if [ -n "$target_dir" ]; then
+             local proposed_conf="${target_dir}/90-sieve.conf"
+             if confirm_yes_no "Create default ${proposed_conf}?" "y"; then
+                 # Create the file with basic structure
+                 {
+                    echo "plugin {"
+                    echo "  sieve = file:~/sieve;active=~/.dovecot.sieve"
+                    echo "}" 
+                 } | $sudo_cmd tee "$proposed_conf" >/dev/null
+                 
+                 DOVECOT_SIEVE_CONF="$proposed_conf"
+                 log_success "Created $DOVECOT_SIEVE_CONF"
+             else
+                 log_warning "Skipping automatic configuration."
+                 return 1
+             fi
+        else
+             log_warning "Skipping automatic configuration (Dovecot config dir not found)."
+             return 1
+        fi
     fi
 
     log_info "Checking $DOVECOT_SIEVE_CONF for required plugins..."
