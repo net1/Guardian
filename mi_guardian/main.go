@@ -436,8 +436,10 @@ func computeLocalTLSH(content string) (string, error) {
 	if goErr != nil {
 		log.Printf("[TLSH-COMPARE] Go lib error: %v", goErr)
 	} else {
-		goHash := goHashStruct.String()
-		if cHash != goHash {
+		goHash := strings.ToUpper(goHashStruct.String())
+		cHashNormalized := strings.TrimPrefix(cHash, "T1")
+
+		if cHashNormalized != goHash {
 			log.Printf("[TLSH-COMPARE] MISMATCH! C-Bin: %s | Go-Lib: %s", cHash, goHash)
 		} else {
 			log.Printf("[TLSH-COMPARE] MATCH: %s", cHash)
