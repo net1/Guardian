@@ -47,7 +47,7 @@ show_installation_options() {
     fi
 
     if [ "$source_possible" = "1" ]; then
-        echo "2) Build Standalone from source (requires Go, Redis, cmake)"
+        echo "2) Build Standalone from source (requires Go, Redis)"
     else
         echo "2) Build Standalone from source (Unavailable)"
     fi
@@ -115,7 +115,7 @@ main() {
 
     source_possible=0
     if command_exists go; then
-        if (command_exists redis-server || command_exists redis-cli) && command_exists cmake; then
+        if (command_exists redis-server || command_exists redis-cli); then
             source_possible=1
         fi
     fi
@@ -133,7 +133,7 @@ main() {
         echo -e "\n--------------------------------------------------"
         log_error "No installation method is possible with the current dependencies."
         log_info "For Docker Compose: install Docker + Docker Compose and run from a folder containing docker-compose.yaml."
-        log_info "For Standalone build from source: install Go + Redis + cmake."
+        log_info "For Standalone build from source: install Go + Redis."
         echo -e "--------------------------------------------------"
         exit 1
     fi
