@@ -2,4 +2,4 @@
 install.sh linguist-generated
 
 #exclude all .sh files from install folder
-install/*.sh linguist-generated
+install/* linguist-generated
