@@ -218,18 +218,34 @@ Guardian does **not** require:
 - Access to raw mailbox content  
 - Heavy runtime dependencies  
 
-Note: Rspamd and SpamAssassin integrations are optional. You can skip all filter integration prompts with:
+### Installation Options
+
+You can customize the installation by passing arguments to the installer.
+
+To see all available options:
 
 ```sh
-./install.sh --no-filter-integration
+./install.sh --help
 ```
 
-Or disable a specific integration even if installed:
+Common options:
 
-```sh
-./install.sh --no-rspamd
-./install.sh --no-spamassassin
-```
+- **Redis Configuration**:
+  If your Redis instance is not on localhost (or `mi-redis` for Docker), specify it:
+  ```sh
+  ./install.sh --redis-host 192.168.1.50 --redis-port 6380
+  ```
+
+- **Filter Integration**:
+  Skip all filter integration prompts:
+  ```sh
+  ./install.sh --no-filter-integration
+  ```
+  Disable a specific integration even if installed:
+  ```sh
+  ./install.sh --no-rspamd
+  ./install.sh --no-spamassassin
+  ```
 
 ---
 
