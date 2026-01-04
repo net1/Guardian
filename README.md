@@ -399,5 +399,5 @@ where local signals become part of a collective defense.
 
 ## License
 
-This project is released under the MIT License.  
+This project is released under the GPLv3 License.  
 See the [LICENSE](LICENSE) file for details.
