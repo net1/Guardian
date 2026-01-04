@@ -34,6 +34,7 @@ Guardian is built for anyone operating email infrastructure, from large provider
 - [Prerequisites](#prerequisites)
   - [Mandatory](#mandatory)
   - [Optional but Recommended](#optional-but-recommended)
+- [Installation Options](#installation-options)
 - [Installation](#installation)
   - [Method 1: Install from GitHub Archive (Recommended)](#method-1-install-from-github-archive-recommended)
   - [Method 2: Install using Git, developer friendly](#method-2-install-using-git-developer-friendly)
