@@ -149,6 +149,28 @@ EOF
     fi
     log_success "Installed: $lua_dst"
 
+    # Copy (overwrite) the Mailuminati config file
+    local conf_src="${INSTALLER_DIR}/Rspamd/mailuminati.conf"
+    local conf_dst="${rspamd_local_d_dir}/mailuminati.conf"
+
+    if [ -f "$conf_src" ]; then
+        if command_exists install; then
+            if ! $sudo_cmd install -m 0644 "$conf_src" "$conf_dst"; then
+                log_error "Failed to install: $conf_dst"
+                return 1
+            fi
+        else
+            if ! $sudo_cmd cp -f "$conf_src" "$conf_dst"; then
+                log_error "Failed to copy: $conf_dst"
+                return 1
+            fi
+        fi
+        log_success "Installed: $conf_dst"
+    else
+        log_warning "Cannot find source config file: $conf_src"
+    fi
+
+
     # Validate Rspamd configuration
     log_info "Validating Rspamd configuration..."
     local config_ok=0

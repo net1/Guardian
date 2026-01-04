@@ -38,6 +38,8 @@ local options = {
     endpoint = "http://127.0.0.1:1133/analyze",
     report_endpoint = "http://127.0.0.1:1133/report",
     timeout = 5.0, -- Increased timeout for safety
+    spam_score = 10.0,
+    suspicious_score = 4.0
 }
 
 -- Read optional configuration
@@ -117,13 +119,13 @@ if rspamd_config then
     -- Default symbol scores
     rspamd_config:set_metric_symbol({
         name = 'MAILUMINATI_SPAM',
-        score = 10.0,
+        score = options.spam_score,
         description = 'Structural DNA match (Mailuminati)'
     })
     
     rspamd_config:set_metric_symbol({
         name = 'MAILUMINATI_SUSPICIOUS',
-        score = 4.0,
+        score = options.suspicious_score,
         description = 'Strong structural proximity (Mailuminati)'
     })
 end
