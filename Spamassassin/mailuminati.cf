@@ -1,0 +1,31 @@
+# Mailuminati Guardian 
+# Copyright (C) 2025 Simon Bressier
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# Mailuminati SpamAssassin Configuration
+
+loadplugin Mail::SpamAssassin::Plugin::Mailuminati Mailuminati.pm
+
+# Configuration options
+# mailuminati_endpoint http://127.0.0.1:1133/analyze
+# mailuminati_timeout 5
+
+# Define the rules
+header   MAILUMINATI_SPAM       eval:check_mailuminati_spam()
+describe MAILUMINATI_SPAM       Mailuminati detected this message as spam
+score    MAILUMINATI_SPAM       10.0
+
+header   MAILUMINATI_SUSPICIOUS eval:check_mailuminati_suspicious()
+describe MAILUMINATI_SUSPICIOUS Mailuminati detected suspicious content (proximity match)
+score    MAILUMINATI_SUSPICIOUS 5.0

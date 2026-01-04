@@ -1,5 +1,20 @@
 #!/bin/bash
 
+# Mailuminati Guardian 
+# Copyright (C) 2025 Simon Bressier
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 install_docker() {
     if [ "$docker_possible" != "1" ]; then
         log_error "Docker Compose install is not available on this system."
@@ -23,6 +38,11 @@ install_docker() {
         fi
 
         log_info "Building and starting services with Docker Compose..."
+        
+        # Generate .env file for Docker Compose
+        echo "REDIS_HOST=${REDIS_HOST:-mi-redis}" > "${INSTALLER_DIR}/.env"
+        echo "REDIS_PORT=${REDIS_PORT:-6379}" >> "${INSTALLER_DIR}/.env"
+        
         if docker_compose_v2_available; then
             compose_up_ok=0
             $DOCKER_SUDO docker compose -f "$COMPOSE_FILE" --project-directory "$INSTALLER_DIR" up -d --build && compose_up_ok=1

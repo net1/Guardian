@@ -1,5 +1,20 @@
 #!/bin/bash
 
+# Mailuminati Guardian 
+# Copyright (C) 2025 Simon Bressier
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 install_source() {
     if [ "$source_possible" != "1" ]; then
         log_error "Source build install is not available on this system."
@@ -38,6 +53,11 @@ install_source() {
                 log_success "Ownership of /opt/Mailuminati set to 'mailuminati'."
                 # Create systemd service
                 SERVICE_FILE="/etc/systemd/system/mailuminati-guardian.service"
+                
+                # Determine Redis config for systemd
+                local r_host="${REDIS_HOST:-localhost}"
+                local r_port="${REDIS_PORT:-6379}"
+
                 sudo tee "$SERVICE_FILE" > /dev/null <<EOF
 [Unit]
 Description=Mailuminati Guardian Service
@@ -49,6 +69,8 @@ ExecStart=/opt/Mailuminati/mailuminati-guardian
 Restart=always
 RestartSec=5
 User=mailuminati
+Environment="REDIS_HOST=${r_host}"
+Environment="REDIS_PORT=${r_port}"
 
 [Install]
 WantedBy=multi-user.target

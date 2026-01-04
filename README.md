@@ -34,6 +34,7 @@ Guardian is built for anyone operating email infrastructure, from large provider
 - [Prerequisites](#prerequisites)
   - [Mandatory](#mandatory)
   - [Optional but Recommended](#optional-but-recommended)
+- [Installation Options](#installation-options)
 - [Installation](#installation)
   - [Method 1: Install from GitHub Archive (Recommended)](#method-1-install-from-github-archive-recommended)
   - [Method 2: Install using Git, developer friendly](#method-2-install-using-git-developer-friendly)
@@ -218,18 +219,34 @@ Guardian does **not** require:
 - Access to raw mailbox content  
 - Heavy runtime dependencies  
 
-Note: Rspamd and SpamAssassin integrations are optional. You can skip all filter integration prompts with:
+### Installation Options
+
+You can customize the installation by passing arguments to the installer.
+
+To see all available options:
 
 ```sh
-./install.sh --no-filter-integration
+./install.sh --help
 ```
 
-Or disable a specific integration even if installed:
+Common options:
 
-```sh
-./install.sh --no-rspamd
-./install.sh --no-spamassassin
-```
+- **Redis Configuration**:
+  If your Redis instance is not on localhost (or `mi-redis` for Docker), specify it:
+  ```sh
+  ./install.sh --redis-host 192.168.1.50 --redis-port 6380
+  ```
+
+- **Filter Integration**:
+  Skip all filter integration prompts:
+  ```sh
+  ./install.sh --no-filter-integration
+  ```
+  Disable a specific integration even if installed:
+  ```sh
+  ./install.sh --no-rspamd
+  ./install.sh --no-spamassassin
+  ```
 
 ---
 
@@ -382,5 +399,10 @@ where local signals become part of a collective defense.
 
 ## License
 
-This project is released under the MIT License.  
+This client is open-source software licensed under the GNU GPLv3.
+
+Copyright © 2025 Simon Bressier.
+
+Please note: This license applies strictly to the client-side code contained in this repository.
+
 See the [LICENSE](LICENSE) file for details.

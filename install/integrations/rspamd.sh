@@ -1,5 +1,20 @@
 #!/bin/bash
 
+# Mailuminati Guardian 
+# Copyright (C) 2025 Simon Bressier
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 detect_rspamd_paths() {
     RSPAMD_CONF_ROOT=""
     RSPAMD_LOCAL_D=""
@@ -148,6 +163,28 @@ EOF
         fi
     fi
     log_success "Installed: $lua_dst"
+
+    # Copy (overwrite) the Mailuminati config file
+    local conf_src="${INSTALLER_DIR}/Rspamd/mailuminati.conf"
+    local conf_dst="${rspamd_local_d_dir}/mailuminati.conf"
+
+    if [ -f "$conf_src" ]; then
+        if command_exists install; then
+            if ! $sudo_cmd install -m 0644 "$conf_src" "$conf_dst"; then
+                log_error "Failed to install: $conf_dst"
+                return 1
+            fi
+        else
+            if ! $sudo_cmd cp -f "$conf_src" "$conf_dst"; then
+                log_error "Failed to copy: $conf_dst"
+                return 1
+            fi
+        fi
+        log_success "Installed: $conf_dst"
+    else
+        log_warning "Cannot find source config file: $conf_src"
+    fi
+
 
     # Validate Rspamd configuration
     log_info "Validating Rspamd configuration..."
