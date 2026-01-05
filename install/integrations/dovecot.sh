@@ -128,9 +128,9 @@ configure_dovecot_integration() {
         fi
     fi
 
-    # --- Ensure sieve_extensions has +copy +imap4flags +vnd.dovecot.pipe ---
+    # --- Ensure sieve_extensions has +copy +imap4flags +vnd.dovecot.pipe +imapsieve ---
     log_info "Checking sieve_extensions for required extensions..."
-    local required_exts=("+copy" "+imap4flags" "+vnd.dovecot.pipe")
+    local required_exts=("+copy" "+imap4flags" "+vnd.dovecot.pipe" "+imapsieve")
     local exts_changed=0
 
     if grep -q "^[[:space:]]*sieve_extensions[[:space:]]*=" "$DOVECOT_SIEVE_CONF"; then
@@ -146,11 +146,11 @@ configure_dovecot_integration() {
     else
         log_info "sieve_extensions directive not found. Adding it..."
         if grep -q "^[[:space:]]*sieve_plugins[[:space:]]*=" "$DOVECOT_SIEVE_CONF"; then
-             $sudo_cmd sed -i "/^[[:space:]]*sieve_plugins[[:space:]]*=/a \  sieve_extensions = +copy +imap4flags +vnd.dovecot.pipe" "$DOVECOT_SIEVE_CONF"
+             $sudo_cmd sed -i "/^[[:space:]]*sieve_plugins[[:space:]]*=/a \  sieve_extensions = +copy +imap4flags +vnd.dovecot.pipe +imapsieve" "$DOVECOT_SIEVE_CONF"
         elif grep -q "^plugin[[:space:]]*{" "$DOVECOT_SIEVE_CONF"; then
-             $sudo_cmd sed -i '/^plugin[[:space:]]*{/a \  sieve_extensions = +copy +imap4flags +vnd.dovecot.pipe' "$DOVECOT_SIEVE_CONF"
+             $sudo_cmd sed -i '/^plugin[[:space:]]*{/a \  sieve_extensions = +copy +imap4flags +vnd.dovecot.pipe +imapsieve' "$DOVECOT_SIEVE_CONF"
         else
-             echo -e "\nplugin {\n  sieve_extensions = +copy +imap4flags +vnd.dovecot.pipe\n}\n" | $sudo_cmd tee -a "$DOVECOT_SIEVE_CONF" >/dev/null
+             echo -e "\nplugin {\n  sieve_extensions = +copy +imap4flags +vnd.dovecot.pipe +imapsieve\n}\n" | $sudo_cmd tee -a "$DOVECOT_SIEVE_CONF" >/dev/null
         fi
         exts_changed=1
     fi
