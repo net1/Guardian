@@ -45,10 +45,21 @@ install_docker() {
         
         if docker_compose_v2_available; then
             compose_up_ok=0
-            $DOCKER_SUDO docker compose -f "$COMPOSE_FILE" --project-directory "$INSTALLER_DIR" up -d --build && compose_up_ok=1
+            # If REDIS_HOST is specified and differs from default "mi-redis", assume external Redis and only start mi-guardian
+            if [ -n "$REDIS_HOST" ] && [ "$REDIS_HOST" != "mi-redis" ]; then
+                log_info "External Redis specified ($REDIS_HOST). Launching only mi-guardian service."
+                $DOCKER_SUDO docker compose -f "$COMPOSE_FILE" --project-directory "$INSTALLER_DIR" up -d --build mi-guardian && compose_up_ok=1
+            else
+                $DOCKER_SUDO docker compose -f "$COMPOSE_FILE" --project-directory "$INSTALLER_DIR" up -d --build && compose_up_ok=1
+            fi
         else
             compose_up_ok=0
-            $DOCKER_SUDO docker-compose -f "$COMPOSE_FILE" up -d --build && compose_up_ok=1
+             if [ -n "$REDIS_HOST" ] && [ "$REDIS_HOST" != "mi-redis" ]; then
+                log_info "External Redis specified ($REDIS_HOST). Launching only mi-guardian service."
+                $DOCKER_SUDO docker-compose -f "$COMPOSE_FILE" up -d --build mi-guardian && compose_up_ok=1
+            else
+                $DOCKER_SUDO docker-compose -f "$COMPOSE_FILE" up -d --build && compose_up_ok=1
+            fi
         fi
 
         if [ "$compose_up_ok" = "1" ]; then
