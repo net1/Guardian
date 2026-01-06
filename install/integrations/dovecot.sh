@@ -75,6 +75,7 @@ configure_dovecot_integration() {
                  {
                     echo "plugin {"
                     echo "  sieve_pipe_bin_dir = /usr/local/bin"
+                    echo "  sieve_execute_bin_dir = /usr/local/bin"
                     echo "}" 
                  } | $sudo_cmd tee "$proposed_conf" >/dev/null
                  
