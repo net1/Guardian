@@ -75,6 +75,7 @@ configure_dovecot_integration() {
                  {
                     echo "plugin {"
                     echo "  sieve_pipe_bin_dir = /usr/local/bin"
+                    echo "  sieve_execute_bin_dir = /usr/local/bin"
                     echo "}" 
                  } | $sudo_cmd tee "$proposed_conf" >/dev/null
                  
@@ -288,16 +289,16 @@ pipe :copy "guardian-report.sh" ["ham"];' | $sudo_cmd tee "$report_ham_sieve" >/
     $sudo_cmd rm -f "$DOVECOT_SIEVE_CONF.append"
 
     # SPAM Reporting (Move TO Spam/Junk)
-    append_sieve_config "Junk" "" "COPY" "$report_spam_sieve"
-    append_sieve_config "Spam" "" "COPY" "$report_spam_sieve"
-    append_sieve_config "INBOX.Spam" "" "COPY" "$report_spam_sieve"
-    append_sieve_config "INBOX.Junk" "" "COPY" "$report_spam_sieve"
+    append_sieve_config "Junk" "" "COPY APPEND" "$report_spam_sieve"
+    append_sieve_config "Spam" "" "COPY APPEND" "$report_spam_sieve"
+    append_sieve_config "INBOX.Spam" "" "COPY APPEND" "$report_spam_sieve"
+    append_sieve_config "INBOX.Junk" "" "COPY APPEND" "$report_spam_sieve"
 
     # HAM Reporting (Move FROM Spam/Junk)
-    append_sieve_config "*" "Junk" "COPY" "$report_ham_sieve"
-    append_sieve_config "*" "Spam" "COPY" "$report_ham_sieve"
-    append_sieve_config "*" "INBOX.Spam" "COPY" "$report_ham_sieve"
-    append_sieve_config "*" "INBOX.Junk" "COPY" "$report_ham_sieve"
+    append_sieve_config "*" "Junk" "COPY APPEND" "$report_ham_sieve"
+    append_sieve_config "*" "Spam" "COPY APPEND" "$report_ham_sieve"
+    append_sieve_config "*" "INBOX.Spam" "COPY APPEND" "$report_ham_sieve"
+    append_sieve_config "*" "INBOX.Junk" "COPY APPEND" "$report_ham_sieve"
 
     # Now inject the content of .append file into the configuration file
     # We look for the last occurrence of "}" and insert before it, 

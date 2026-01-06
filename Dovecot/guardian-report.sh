@@ -26,8 +26,8 @@ REPORT_TYPE=$1
 HEADERS=$(sed '/^$/q')
 
 # Extract the Message-ID (case insensitive)
-# The format expected by main.go is the raw header string
-MSG_ID=$(echo "$HEADERS" | grep -i "^Message-ID:" | head -1 | sed 's/^Message-ID: *//i' | sed 's/ *$//')
+# The format expected by main.go is the raw header string without surrounding spaces
+MSG_ID=$(echo "$HEADERS" | grep -i "^Message-ID:" | head -1 | sed 's/^Message-ID: *//i' | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
 # Security check
 if [ -z "$MSG_ID" ] || [ -z "$REPORT_TYPE" ]; then

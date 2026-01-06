@@ -346,6 +346,12 @@ func reportHandler(w http.ResponseWriter, r *http.Request) {
 	var scanData ScanResult
 	json.Unmarshal([]byte(val), &scanData)
 
+	// Check if we have hashes to report, else return error
+	if len(scanData.Hashes) == 0 {
+		http.Error(w, "No hashes to report", http.StatusBadRequest)
+		return
+	}
+
 	// --- Local learning ---
 	if reqBody.ReportType == "spam" {
 		log.Printf("[Mailuminati] Processing spam report for Message-ID: %s", reqBody.MessageID)
