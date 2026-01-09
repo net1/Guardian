@@ -64,7 +64,7 @@ install_docker() {
 
         if [ "$compose_up_ok" = "1" ]; then
             log_success "Mailuminati Guardian has been started successfully."
-            log_success "The project is now listening on port 1133."
+            log_success "The project is now listening on port 12421."
             post_start_flow
         else
             log_error "Failed to start services with Docker Compose. Please check the output above."

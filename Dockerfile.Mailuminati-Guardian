@@ -52,7 +52,7 @@ ENV REDIS_HOST=mi-redis
 ENV REDIS_PORT=6379
 ENV ORACLE_URL=https://oracle.mailuminati.com
 
-EXPOSE 1133
+EXPOSE 12421
 
 USER appuser
 

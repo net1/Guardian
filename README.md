@@ -292,19 +292,19 @@ It exposes endpoints such as:
 
 ## API Endpoints
 
-Base URL: `http://<guardian-host>:1133`
+Base URL: `http://<guardian-host>:12421`
 
 > **Warning (Security)**
 >
-> Guardian listens on port **1133** and the API provides **no authentication**.
-> It is therefore strongly recommended to **not expose** `:1133` to the Internet and to **block external access** with a firewall (allow only `localhost` or your internal network) to prevent fraudulent use.
+> Guardian listens on port **12421** and the API provides **no authentication**.
+> It is therefore strongly recommended to **not expose** `:12421` to the Internet and to **block external access** with a firewall (allow only `localhost` or your internal network) to prevent fraudulent use.
 
 ### GET /status
 
 Health/info endpoint used by the installer post-start check.
 
 ```bash
-curl -sS http://localhost:1133/status | jq
+curl -sS http://localhost:12421/status | jq
 ```
 
 Example response:
@@ -329,7 +329,7 @@ Notes:
 curl -sS -X POST \
   -H 'Content-Type: message/rfc822' \
   --data-binary @message.eml \
-  http://localhost:1133/analyze | jq
+  http://localhost:12421/analyze | jq
 ```
 
 Example response:
@@ -370,7 +370,7 @@ Request body:
 curl -sS -X POST \
   -H 'Content-Type: application/json' \
   -d '{"message-id":"<your-message-id@example>","report_type":"spam"}' \
-  http://localhost:1133/report
+  http://localhost:12421/report
 ```
 
 Notes:
