@@ -384,6 +384,11 @@ Guardian’s API behavior depends on these environment variables:
 - `REDIS_HOST` (default: `localhost`)
 - `REDIS_PORT` (default: `6379`)
 
+- **`SPAM_WEIGHT`**: Defines the weight (or score increment) applied to a hash when it is reported as spam. Default value: `1`.
+- **`HAM_WEIGHT`**: Defines the weight (or score decrement) applied to a hash when it is reported as ham (false positive). Default value: `2`.
+
+These variables allow operators to fine-tune the impact of spam and ham reports on the local learning database. Adjust these values based on your specific requirements and the desired sensitivity of the system.
+
 ---
 
 ## Relationship to Other Components
