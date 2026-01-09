@@ -18,7 +18,7 @@
 loadplugin Mail::SpamAssassin::Plugin::Mailuminati Mailuminati.pm
 
 # Configuration options
-# mailuminati_endpoint http://127.0.0.1:1133/analyze
+# mailuminati_endpoint http://127.0.0.1:12421/analyze
 # mailuminati_timeout 5
 
 # Define the rules

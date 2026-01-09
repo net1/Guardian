@@ -81,7 +81,7 @@ EOF
                 sudo systemctl enable mailuminati-guardian
                 sudo systemctl restart mailuminati-guardian
                 log_success "Mailuminati Guardian service started and enabled."
-                log_success "The project is now listening on port 1133."
+                log_success "The project is now listening on port 12421."
                 started_ok=1
             else
                 log_error "Build failed. Please check the Go output above."

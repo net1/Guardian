@@ -155,13 +155,13 @@ offer_filter_integration() {
 }
 
 post_start_flow() {
-    wait_for_status_ready "http://localhost:1133/status" 30 || true
+    wait_for_status_ready "http://localhost:12421/status" 30 || true
     offer_filter_integration
 
     echo -e "\n--------------------------------------------------"
     log_info "Retrieving Node Identity..."
     local json_payload=""
-    json_payload="$(http_get "http://localhost:1133/status" 2>/dev/null || true)"
+    json_payload="$(http_get "http://localhost:12421/status" 2>/dev/null || true)"
     
     # Simple extraction using grep/sed
     local node_id_extracted=""
@@ -175,7 +175,7 @@ post_start_flow() {
         echo -e "👉 https://guardian.mailuminati.com/signup.php?node_id=$node_id_extracted"
     else
         log_warning "Could not retrieve Node Identity automatically."
-        echo "You can find it later by querying: curl http://localhost:1133/status"
+        echo "You can find it later by querying: curl http://localhost:12421/status"
     fi
     echo -e "--------------------------------------------------\n"
 }

@@ -16,7 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # Configuration
-API_URL="http://127.0.0.1:1133/report"
+API_URL="http://127.0.0.1:12421/report"
 
 # Report type passed as argument by the Sieve script ("spam" or "ham")
 REPORT_TYPE=$1

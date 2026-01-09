@@ -15,7 +15,7 @@
 
 
 -- Rspamd module for Mailuminati
--- Communicates with the Guardian, the Go sidecar on port 1133
+-- Communicates with the Guardian, the Go sidecar on port 12421
 
 local rspamd_logger = require "rspamd_logger"
 local http = require "rspamd_http"
@@ -25,8 +25,8 @@ local ucl = require "ucl"
 rspamd_logger.errx("Mailuminati: MODULE LOADED")
 
 local options = {
-    endpoint = "http://127.0.0.1:1133/analyze",
-    report_endpoint = "http://127.0.0.1:1133/report",
+    endpoint = "http://127.0.0.1:12421/analyze",
+    report_endpoint = "http://127.0.0.1:12421/report",
     timeout = 5.0, -- Increased timeout for safety
     spam_score = 10.0,
     suspicious_score = 4.0

@@ -35,7 +35,7 @@ sub new {
     
     # Default configuration
     $self->{mailuminati_config} = {
-        endpoint => 'http://127.0.0.1:1133/analyze',
+        endpoint => 'http://127.0.0.1:12421/analyze',
         timeout  => 5,
     };
 

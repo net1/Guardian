@@ -75,7 +75,7 @@ validate_status_json() {
 }
 
 wait_for_status_ready() {
-    local url="${1:-http://localhost:1133/status}"
+    local url="${1:-http://localhost:12421/status}"
     local timeout_s="${2:-30}"
     local deadline=$((SECONDS + timeout_s))
     local json=""

@@ -21,9 +21,9 @@ services:
       dockerfile: Dockerfile.Mailuminati-Guardian
     restart: unless-stopped
     expose:
-      - "1133"
+      - "12421"
     ports:
-      - "1133:1133"
+      - "12421:12421"
     environment:
       - REDIS_HOST=${REDIS_HOST:-mi-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
