@@ -24,8 +24,8 @@ loadplugin Mail::SpamAssassin::Plugin::Mailuminati
 # Define the rules
 header   MAILUMINATI_SPAM       eval:check_mailuminati_spam()
 describe MAILUMINATI_SPAM       Mailuminati detected this message as spam
-score    MAILUMINATI_SPAM       10.0
+score    MAILUMINATI_SPAM       9.0
 
 header   MAILUMINATI_SUSPICIOUS eval:check_mailuminati_suspicious()
 describe MAILUMINATI_SUSPICIOUS Mailuminati detected suspicious content (proximity match)
-score    MAILUMINATI_SUSPICIOUS 5.0
+score    MAILUMINATI_SUSPICIOUS 4.0
