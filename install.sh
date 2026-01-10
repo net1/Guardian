@@ -66,7 +66,8 @@ show_installation_options() {
     else
         echo "2) Build Standalone from source (Unavailable)"
     fi
-    echo "3) Exit"
+    echo "3) Configure Integrations only (Skip install)"
+    echo "4) Exit"
 
     while true; do
         read -r -p "Enter your choice [${default_choice}]: " choice
@@ -82,6 +83,11 @@ show_installation_options() {
                 break
                 ;;
             3)
+                log_info "Skipping installation, proceeding to integration setup..."
+                post_start_flow
+                break
+                ;;
+            4)
                 log_info "Installation aborted."
                 break
                 ;;
