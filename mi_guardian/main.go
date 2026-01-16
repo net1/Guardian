@@ -38,19 +38,22 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"github.com/jhillyerd/enmime"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // --- Mailuminati engine configuration ---
 const (
-	EngineVersion    = "0.4.6"
-	FragKeyPrefix    = "mi_f:"
-	LocalFragPrefix  = "lg_f:"
-	LocalScorePrefix = "lg_s:"
-	MetaNodeID       = "mi_meta:id"
-	MetaVer          = "mi_meta:v"
-	DefaultOracle    = "https://oracle.mailuminati.com"
-	MaxProcessSize   = 15 * 1024 * 1024 // 15 MB max
-	MinVisualSize    = 50 * 1024        // Ignore small logos/trackers
+	EngineVersion         = "0.4.8"
+	FragKeyPrefix         = "mi_f:"
+	LocalFragPrefix       = "lg_f:"
+	OracleCacheFragPrefix = "oc_f:"
+	LocalScorePrefix      = "lg_s:"
+	MetaNodeID            = "mi_meta:id"
+	MetaVer               = "mi_meta:v"
+	DefaultOracle         = "https://oracle.mailuminati.com"
+	MaxProcessSize        = 15 * 1024 * 1024 // 15 MB max
+	MinVisualSize         = 50 * 1024        // Ignore small logos/trackers
 )
 
 var (
@@ -66,7 +69,30 @@ var (
 	localSpamCount      int64
 	spamWeight          int64
 	hamWeight           int64
+
+	// Prometheus metrics
+	promScanned = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "mailuminati_guardian_scanned_total",
+		Help: "Total number of emails scanned",
+	})
+	// promSpamDetected removed in favor of precise buckets
+	promLocalMatch = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "mailuminati_guardian_local_match_total",
+		Help: "Total number of emails matched locally",
+	})
+	promOracleMatch = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mailuminati_guardian_oracle_match_total",
+		Help: "Total number of emails matched via oracle",
+	}, []string{"type"})
+	promCacheHits = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mailuminati_guardian_cache_hits_total",
+		Help: "Total number of cache hits",
+	}, []string{"result"})
 )
+
+func init() {
+	prometheus.MustRegister(promScanned, promLocalMatch, promOracleMatch, promCacheHits)
+}
 
 type AnalysisResult struct {
 	Action         string `json:"action"`
@@ -131,6 +157,7 @@ func main() {
 	go statsWorker()
 
 	// Endpoints
+	http.Handle("/metrics", promhttp.Handler())
 	http.HandleFunc("/analyze", analyzeHandler)
 	http.HandleFunc("/report", logRequestHandler(reportHandler))
 	http.HandleFunc("/status", logRequestHandler(statusHandler))
@@ -145,6 +172,7 @@ func main() {
 
 func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&scanCount, 1)
+	promScanned.Inc()
 
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
@@ -212,6 +240,7 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 			if json.Unmarshal([]byte(cached), &res) == nil && res.Action == "spam" {
 				finalResult = res
 				atomic.AddInt64(&cachedPositiveCount, 1)
+				promCacheHits.WithLabelValues("positive").Inc()
 				goto endAnalysis // Final verdict; stop everything
 			}
 		}
@@ -222,6 +251,57 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 		// Declare here to avoid "goto jumps over declaration"
 		var matchCount int
 		var oracleCmds []*redis.IntCmd
+
+		// Step 1.5: Oracle Cache Proximity Lookup (Spam variations from recent queries)
+		oracleCacheBandsKeys := []string{}
+		pipe = rdb.Pipeline()
+		ocCmds := make(map[string]*redis.IntCmd)
+		for _, b := range bands {
+			key := OracleCacheFragPrefix + b
+			ocCmds[key] = pipe.Exists(ctx, key)
+		}
+		pipe.Exec(ctx)
+
+		for key, cmd := range ocCmds {
+			if cmd.Val() > 0 {
+				oracleCacheBandsKeys = append(oracleCacheBandsKeys, key)
+			}
+		}
+
+		if len(oracleCacheBandsKeys) >= 4 {
+			var ocHashes []string
+			pipe = rdb.Pipeline()
+			hashCmds := make(map[string]*redis.StringSliceCmd)
+			for _, key := range oracleCacheBandsKeys {
+				hashCmds[key] = pipe.SMembers(ctx, key)
+			}
+			pipe.Exec(ctx)
+
+			seenHashes := make(map[string]struct{})
+			for _, cmd := range hashCmds {
+				for _, hash := range cmd.Val() {
+					if _, seen := seenHashes[hash]; !seen {
+						ocHashes = append(ocHashes, hash)
+						seenHashes[hash] = struct{}{}
+					}
+				}
+			}
+
+			if len(ocHashes) > 0 {
+				distances, err := computeDistanceBatch(sig, ocHashes, ocHashes, false)
+				if err == nil {
+					for hash, dist := range distances {
+						if dist <= 70 {
+							log.Printf("[Mailuminati] Oracle Cache Proximity Match! Message-ID: %s | Subject: %s | Signature: %s | Match: %s | Distance: %d", messageID, subject, sig, hash, dist)
+							finalResult = AnalysisResult{Action: "spam", Label: "oracle_cache_match", ProximityMatch: true, Distance: dist}
+							atomic.AddInt64(&cachedPositiveCount, 1)
+							promCacheHits.WithLabelValues("positive").Inc()
+							goto endAnalysis
+						}
+					}
+				}
+			}
+		}
 
 		// Step 2: Local learning lookup
 		localMatchBandsKeys := []string{}
@@ -278,6 +358,7 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 								log.Printf("[Mailuminati] Local spam detected! Message-ID: %s | Subject: %s | Signature: %s | Match: %s | Score: %d", messageID, subject, sig, hash, scoreVal)
 								finalResult = AnalysisResult{Action: "spam", Label: "local_spam", ProximityMatch: true, Distance: dist}
 								atomic.AddInt64(&localSpamCount, 1)
+								promLocalMatch.Inc()
 								isLocalSpam = true
 								break // A single match is enough
 							}
@@ -314,11 +395,13 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[Mailuminati] Oracle spam detected! Message-ID: %s | Subject: %s | Signature: %s", messageID, subject, sig)
 				finalResult = oracleVerdict
 				atomic.AddInt64(&spamConfirmedCount, 1)
+				promOracleMatch.WithLabelValues("complete").Inc()
 				break // Final verdict; stop everything
 			} else {
 				log.Printf("[Mailuminati] Oracle partial match. Message-ID: %s | Subject: %s | Signature: %s", messageID, subject, sig)
 				finalResult.ProximityMatch = true
 				atomic.AddInt64(&partialMatchCount, 1)
+				promOracleMatch.WithLabelValues("partial").Inc()
 			}
 		}
 
@@ -696,8 +779,10 @@ func callOracleDecision(sig string) AnalysisResult {
 		if json.Unmarshal([]byte(cached), &res) == nil {
 			if res.Action == "spam" {
 				atomic.AddInt64(&cachedPositiveCount, 1)
+				promCacheHits.WithLabelValues("positive").Inc()
 			} else {
 				atomic.AddInt64(&cachedNegativeCount, 1)
+				promCacheHits.WithLabelValues("negative").Inc()
 			}
 			return res
 		}
@@ -723,10 +808,27 @@ func callOracleDecision(sig string) AnalysisResult {
 	if res.Result.Action != "" {
 		cacheDuration := 5 * time.Minute
 		if res.Result.Action == "spam" {
+			// For SPAM: Store exactly like local learns (LSH bands) + Exact Cache
 			cacheDuration = 1 * time.Hour
+
+			// 1. Exact Cache (Fast path)
+			data, _ := json.Marshal(res.Result)
+			rdb.Set(ctx, cacheKey, data, cacheDuration)
+
+			// 2. LSH Bands (Proximity path)
+			bands := extractBands_6_3(sig)
+			pipe := rdb.Pipeline()
+			for _, band := range bands {
+				key := OracleCacheFragPrefix + band
+				pipe.SAdd(ctx, key, sig)
+				pipe.Expire(ctx, key, cacheDuration)
+			}
+			pipe.Exec(ctx)
+		} else {
+			// For HAM/Others: Store only exact cache
+			data, _ := json.Marshal(res.Result)
+			rdb.Set(ctx, cacheKey, data, cacheDuration)
 		}
-		data, _ := json.Marshal(res.Result)
-		rdb.Set(ctx, cacheKey, data, cacheDuration)
 		return res.Result
 	}
 

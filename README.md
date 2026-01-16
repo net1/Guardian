@@ -398,6 +398,20 @@ Notes:
 - If Guardian has no stored scan data for this `Message-ID`, it returns `404 No scan data found`.
 - The response body/status code are proxied from the Oracle when reachable.
 
+### GET /metrics
+
+Exposes internal metrics in **Prometheus** format. This endpoint is designed to be scraped by a Prometheus server to monitor Guardian's activity.
+
+Available metrics include:
+- `mailuminati_guardian_scanned_total`: Total emails scanned.
+- `mailuminati_guardian_local_match_total`: Emails detected using local P2P intelligence.
+- `mailuminati_guardian_oracle_match_total`: Emails matched via Oracle (partial or complete).
+- `mailuminati_guardian_cache_hits_total`: Cache hits efficiency.
+
+```bash
+curl -sS http://localhost:12421/metrics
+```
+
 ---
 
 ## Relationship to Other Components
