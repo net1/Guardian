@@ -38,11 +38,13 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 	"github.com/jhillyerd/enmime"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // --- Mailuminati engine configuration ---
 const (
-	EngineVersion    = "0.4.6"
+	EngineVersion    = "0.4.7"
 	FragKeyPrefix    = "mi_f:"
 	LocalFragPrefix  = "lg_f:"
 	LocalScorePrefix = "lg_s:"
@@ -66,7 +68,30 @@ var (
 	localSpamCount      int64
 	spamWeight          int64
 	hamWeight           int64
+
+	// Prometheus metrics
+	promScanned = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "mailuminati_guardian_scanned_total",
+		Help: "Total number of emails scanned",
+	})
+	// promSpamDetected removed in favor of precise buckets
+	promLocalMatch = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "mailuminati_guardian_local_match_total",
+		Help: "Total number of emails matched locally",
+	})
+	promOracleMatch = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mailuminati_guardian_oracle_match_total",
+		Help: "Total number of emails matched via oracle",
+	}, []string{"type"})
+	promCacheHits = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mailuminati_guardian_cache_hits_total",
+		Help: "Total number of cache hits",
+	}, []string{"result"})
 )
+
+func init() {
+	prometheus.MustRegister(promScanned, promLocalMatch, promOracleMatch, promCacheHits)
+}
 
 type AnalysisResult struct {
 	Action         string `json:"action"`
@@ -131,6 +156,7 @@ func main() {
 	go statsWorker()
 
 	// Endpoints
+	http.Handle("/metrics", promhttp.Handler())
 	http.HandleFunc("/analyze", analyzeHandler)
 	http.HandleFunc("/report", logRequestHandler(reportHandler))
 	http.HandleFunc("/status", logRequestHandler(statusHandler))
@@ -145,6 +171,7 @@ func main() {
 
 func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&scanCount, 1)
+	promScanned.Inc()
 
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
@@ -212,6 +239,7 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 			if json.Unmarshal([]byte(cached), &res) == nil && res.Action == "spam" {
 				finalResult = res
 				atomic.AddInt64(&cachedPositiveCount, 1)
+				promCacheHits.WithLabelValues("positive").Inc()
 				goto endAnalysis // Final verdict; stop everything
 			}
 		}
@@ -278,6 +306,7 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 								log.Printf("[Mailuminati] Local spam detected! Message-ID: %s | Subject: %s | Signature: %s | Match: %s | Score: %d", messageID, subject, sig, hash, scoreVal)
 								finalResult = AnalysisResult{Action: "spam", Label: "local_spam", ProximityMatch: true, Distance: dist}
 								atomic.AddInt64(&localSpamCount, 1)
+								promLocalMatch.Inc()
 								isLocalSpam = true
 								break // A single match is enough
 							}
@@ -314,11 +343,13 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[Mailuminati] Oracle spam detected! Message-ID: %s | Subject: %s | Signature: %s", messageID, subject, sig)
 				finalResult = oracleVerdict
 				atomic.AddInt64(&spamConfirmedCount, 1)
+				promOracleMatch.WithLabelValues("complete").Inc()
 				break // Final verdict; stop everything
 			} else {
 				log.Printf("[Mailuminati] Oracle partial match. Message-ID: %s | Subject: %s | Signature: %s", messageID, subject, sig)
 				finalResult.ProximityMatch = true
 				atomic.AddInt64(&partialMatchCount, 1)
+				promOracleMatch.WithLabelValues("partial").Inc()
 			}
 		}
 
@@ -696,8 +727,10 @@ func callOracleDecision(sig string) AnalysisResult {
 		if json.Unmarshal([]byte(cached), &res) == nil {
 			if res.Action == "spam" {
 				atomic.AddInt64(&cachedPositiveCount, 1)
+				promCacheHits.WithLabelValues("positive").Inc()
 			} else {
 				atomic.AddInt64(&cachedNegativeCount, 1)
+				promCacheHits.WithLabelValues("negative").Inc()
 			}
 			return res
 		}
