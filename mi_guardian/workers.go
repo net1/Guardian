@@ -25,11 +25,16 @@ func doSync() {
 		"version":     EngineVersion,
 	})
 
-	resp, err := http.Post(oracleURL+"/sync", "application/json", bytes.NewBuffer(payload))
-	if err != nil || resp.StatusCode != http.StatusOK {
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Post(oracleURL+"/sync", "application/json", bytes.NewBuffer(payload))
+	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
 
 	var syncData SyncResponse
 	if err := json.NewDecoder(resp.Body).Decode(&syncData); err != nil {
@@ -83,8 +88,20 @@ func statsWorker() {
 			"local_spam_count":      localSpams,
 		})
 
-		resp, err := http.Post(oracleURL+"/stats", "application/json", bytes.NewBuffer(payload))
-		if err != nil || resp.StatusCode > 299 {
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Post(oracleURL+"/stats", "application/json", bytes.NewBuffer(payload))
+
+		failed := false
+		if err != nil {
+			failed = true
+		} else {
+			defer resp.Body.Close() // Ensure we close the body if request was successful
+			if resp.StatusCode > 299 {
+				failed = true
+			}
+		}
+
+		if failed {
 			atomic.AddInt64(&scanCount, scanned)
 			atomic.AddInt64(&partialMatchCount, partials)
 			atomic.AddInt64(&spamConfirmedCount, spams)
