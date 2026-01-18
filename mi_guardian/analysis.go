@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -139,7 +140,13 @@ func storeScanResult(env *enmime.Envelope, hashes []string) {
 	resultBytes, _ := json.Marshal(result)
 
 	key := "mi:msgid:" + sha1Hash
-	rdb.Set(ctx, key, resultBytes, 7*24*time.Hour)
+
+	// Use a timeout context to prevent goroutine leaks if Redis hangs
+	// This was causing linear growth of goroutines under load
+	opCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	rdb.Set(opCtx, key, resultBytes, 7*24*time.Hour)
 }
 
 func callOracleDecision(sig string) AnalysisResult {
