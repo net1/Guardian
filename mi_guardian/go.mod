@@ -15,7 +15,7 @@
 
 module mailuminati-guardian
 
-go 1.25.5
+go 1.25
 
 require (
 	github.com/glaslos/tlsh v0.4.0

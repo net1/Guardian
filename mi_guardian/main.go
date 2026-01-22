@@ -51,6 +51,7 @@ func main() {
 
 	redisHost := getEnv("REDIS_HOST", "localhost")
 	redisPort := getEnv("REDIS_PORT", "6379")
+	redisPassword := getEnv("REDIS_PASSWORD", "")
 	redisAddr := fmt.Sprintf("%s:%s", redisHost, redisPort)
 
 	// Load weights & retention
@@ -71,7 +72,8 @@ func main() {
 	}()
 
 	rdb = redis.NewClient(&redis.Options{
-		Addr: redisAddr,
+		Addr:     redisAddr,
+		Password: redisPassword,
 	})
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
@@ -90,6 +92,7 @@ func main() {
 	http.HandleFunc("/analyze", analyzeHandler)
 	http.HandleFunc("/report", logRequestHandler(reportHandler))
 	http.HandleFunc("/status", logRequestHandler(statusHandler))
+	http.HandleFunc("/whitelist", logRequestHandler(whitelistHandler))
 
 	port := getEnv("PORT", "12421")
 	bindAddr := getEnv("GUARDIAN_BIND_ADDR", "127.0.0.1")

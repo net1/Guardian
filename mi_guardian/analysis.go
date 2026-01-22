@@ -20,6 +20,83 @@ import (
 
 // --- Internal TLSH logic ---
 
+// extractDomain extracts domain from email address
+func extractDomain(email string) string {
+	// Handle formats: "Name <email@domain.com>" or "email@domain.com"
+	email = strings.TrimSpace(email)
+	if idx := strings.Index(email, "<"); idx != -1 {
+		email = email[idx+1:]
+		if idx := strings.Index(email, ">"); idx != -1 {
+			email = email[:idx]
+		}
+	}
+	if idx := strings.Index(email, "@"); idx != -1 {
+		return strings.ToLower(email[idx+1:])
+	}
+	return ""
+}
+
+// isWhitelisted checks if sender domain or email is whitelisted
+func isWhitelisted(fromHeader string) (bool, string) {
+	domain := extractDomain(fromHeader)
+	email := strings.ToLower(fromHeader)
+
+	// Extract just the email if in "Name <email>" format
+	if idx := strings.Index(email, "<"); idx != -1 {
+		email = email[idx+1:]
+		if idx := strings.Index(email, ">"); idx != -1 {
+			email = email[:idx]
+		}
+	}
+
+	// Check domain whitelist
+	if domain != "" {
+		if rdb.SIsMember(ctx, "mi:whitelist:domain", domain).Val() {
+			return true, "domain:" + domain
+		}
+	}
+
+	// Check email whitelist
+	if email != "" {
+		if rdb.SIsMember(ctx, "mi:whitelist:email", email).Val() {
+			return true, "email:" + email
+		}
+	}
+
+	return false, ""
+}
+
+// getThresholdForType returns the distance threshold for a given signature type
+func getThresholdForType(sigType SignatureType) int {
+	switch sigType {
+	case SigNormalized:
+		return int(thresholdNormalized)
+	case SigRaw:
+		return int(thresholdRaw)
+	case SigURL:
+		return int(thresholdURL)
+	case SigSubject:
+		return int(thresholdSubject)
+	case SigAttachment:
+		return int(thresholdAttachment)
+	default:
+		return 70
+	}
+}
+
+// getConfidenceForMatch calculates confidence based on distance and threshold
+func getConfidenceForMatch(distance int, threshold int) float64 {
+	if distance >= threshold {
+		return 0.0
+	}
+	// Confidence: 1.0 at distance 0, decreasing linearly to 0.5 at threshold
+	confidence := 1.0 - (float64(distance) / float64(threshold) * 0.5)
+	if confidence < 0.5 {
+		confidence = 0.5
+	}
+	return confidence
+}
+
 func computeLocalTLSH(content string) (string, error) {
 	goHashStruct, err := tlsh.HashBytes([]byte(content))
 	if err != nil {
@@ -75,6 +152,34 @@ func computeDistanceBatch(ref string, digests []string, ids []string, includeLen
 		results[ids[i]] = dist
 	}
 	return results, nil
+}
+
+// extractURLs extracts all URLs from email content for URL-based hashing
+func extractURLs(content string) []string {
+	reURL := regexp.MustCompile(`https?://[^\s"'<>]+`)
+	matches := reURL.FindAllString(content, -1)
+
+	// Normalize URLs: remove tracking params, lowercase domain
+	seen := make(map[string]struct{})
+	var urls []string
+
+	reTrackParams := regexp.MustCompile(`[?&](utm_[^=&]+|gclid|fbclid|mc_eid|mc_cid|ref|source|campaign)=[^&]*`)
+
+	for _, u := range matches {
+		// Remove tracking parameters
+		normalized := reTrackParams.ReplaceAllString(u, "")
+		// Remove trailing ? or & if params were stripped
+		normalized = strings.TrimRight(normalized, "?&")
+		// Lowercase for consistency
+		normalized = strings.ToLower(normalized)
+
+		if _, exists := seen[normalized]; !exists {
+			seen[normalized] = struct{}{}
+			urls = append(urls, normalized)
+		}
+	}
+
+	return urls
 }
 
 func normalizeEmailBody(text, html string) string {

@@ -39,6 +39,19 @@ var (
 	hamWeight              int64
 	localRetentionDuration time.Duration
 
+	// Distance thresholds per signature type (lower = stricter)
+	thresholdNormalized int64 = 70 // Body normalized - most lenient
+	thresholdRaw        int64 = 60 // Body raw - medium
+	thresholdURL        int64 = 50 // URL-based - strict (phishing)
+	thresholdSubject    int64 = 55 // Subject-based - medium-strict
+	thresholdAttachment int64 = 45 // Attachment - strictest
+
+	// Soft spam threshold (between soft and hard = review)
+	softSpamDelta int64 = 20 // If distance is threshold+delta, mark as soft_spam
+
+	// Minimum body length for reliable TLSH
+	minBodyLength int64 = 200
+
 	// Config
 	configMap   map[string]string = make(map[string]string)
 	configMutex sync.RWMutex

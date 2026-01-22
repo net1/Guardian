@@ -39,16 +39,43 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	signatures := []string{}
+	typedSignatures := []TypedSignature{}
+	signatures := []string{} // Keep for backward compatibility
 
 	// get the message-id and subject for logging
 	messageID := env.GetHeader("Message-ID")
 	subject := env.GetHeader("Subject")
+	fromHeader := env.GetHeader("From")
 
-	// 1. Analyze text body (Standard strategy)
+	// Check whitelist first
+	if whitelisted, reason := isWhitelisted(fromHeader); whitelisted {
+		log.Printf("[Mailuminati] Whitelisted sender: %s | Reason: %s | Message-ID: %s", fromHeader, reason, messageID)
+		w.Header().Set("Content-Type", "application/json")
+		response := struct {
+			Action     string `json:"action"`
+			Label      string `json:"label,omitempty"`
+			Whitelisted bool   `json:"whitelisted"`
+			Reason     string `json:"reason,omitempty"`
+		}{
+			Action:     "allow",
+			Label:      "whitelisted",
+			Whitelisted: true,
+			Reason:     reason,
+		}
+		respBytes, _ := json.Marshal(response)
+		w.WriteHeader(http.StatusOK)
+		w.Write(respBytes)
+		return
+	}
+
+	// Get minimum body length (configurable)
+	minLen := int(minBodyLength)
+
+	// 1. Analyze text body (Standard strategy) - Normalized
 	combinedBody := normalizeEmailBody(env.Text, env.HTML)
-	if len(combinedBody) > 100 {
+	if len(combinedBody) > minLen {
 		if sig, err := computeLocalTLSH(combinedBody); err == nil {
+			typedSignatures = append(typedSignatures, TypedSignature{Hash: sig, Type: SigNormalized})
 			signatures = append(signatures, sig)
 		} else {
 			log.Printf("[Mailuminati] Failed to compute TLSH for body: %v", err)
@@ -57,8 +84,32 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Extra Hash: Raw Body (HTML + Text concatenated, no normalization)
 	rawBody := env.Text + env.HTML
-	if len(rawBody) > 100 {
+	if len(rawBody) > minLen {
 		if sig, err := computeLocalTLSH(rawBody); err == nil {
+			typedSignatures = append(typedSignatures, TypedSignature{Hash: sig, Type: SigRaw})
+			signatures = append(signatures, sig)
+		}
+	}
+
+	// 3. URL-Based Hash (for phishing detection)
+	urls := extractURLs(env.Text + env.HTML)
+	if len(urls) >= 2 {
+		urlContent := strings.Join(urls, "\n")
+		if len(urlContent) > 100 {
+			if sig, err := computeLocalTLSH(urlContent); err == nil {
+				typedSignatures = append(typedSignatures, TypedSignature{Hash: sig, Type: SigURL})
+				signatures = append(signatures, sig)
+			}
+		}
+	}
+
+	// 3.5 Subject-Based Hash (spam campaigns often reuse subjects)
+	if len(subject) > 30 {
+		normalizedSubject := strings.ToLower(strings.TrimSpace(subject))
+		// Repeat subject to meet TLSH minimum length requirement
+		subjectContent := strings.Repeat(normalizedSubject+" ", 5)
+		if sig, err := computeLocalTLSH(subjectContent); err == nil {
+			typedSignatures = append(typedSignatures, TypedSignature{Hash: sig, Type: SigSubject})
 			signatures = append(signatures, sig)
 		}
 	}
@@ -68,6 +119,7 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 		isImg := strings.HasPrefix(att.ContentType, "image/")
 		if (isImg && len(att.Content) > MinVisualSize) || (!isImg && len(att.Content) > 128) {
 			if sig, err := computeLocalTLSH(string(att.Content)); err == nil {
+				typedSignatures = append(typedSignatures, TypedSignature{Hash: sig, Type: SigAttachment})
 				signatures = append(signatures, sig)
 			} else {
 				log.Printf("[Mailuminati] Failed to compute TLSH for attachment '%s': %v", att.FileName, err)
@@ -79,8 +131,12 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 
 	var finalResult AnalysisResult = AnalysisResult{Action: "allow", ProximityMatch: false}
 
-	// 3. Collision search
-	for _, sig := range signatures {
+	// 3. Collision search with type-specific thresholds
+	for _, typedSig := range typedSignatures {
+		sig := typedSig.Hash
+		sigType := typedSig.Type
+		threshold := getThresholdForType(sigType)
+		softThreshold := threshold + int(softSpamDelta)
 		// Step 1: Check oracle decision cache
 		cacheKey := "mi:oracle_cache:" + sig
 		if cached, err := rdb.Get(ctx, cacheKey).Result(); err == nil {
@@ -139,12 +195,20 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 				distances, err := computeDistanceBatch(sig, ocHashes, ocHashes, false)
 				if err == nil {
 					for hash, dist := range distances {
-						if dist <= 70 {
-							log.Printf("[Mailuminati] Oracle Cache Proximity Match! Message-ID: %s | Subject: %s | Signature: %s | Match: %s | Distance: %d", messageID, subject, sig, hash, dist)
-							finalResult = AnalysisResult{Action: "spam", Label: "oracle_cache_match", ProximityMatch: true, Distance: dist}
+						if dist <= threshold {
+							confidence := getConfidenceForMatch(dist, threshold)
+							log.Printf("[Mailuminati] Oracle Cache Proximity Match! Message-ID: %s | Subject: %s | Signature: %s | Match: %s | Distance: %d | Type: %s", messageID, subject, sig, hash, dist, sigType.String())
+							finalResult = AnalysisResult{Action: "spam", Label: "oracle_cache_match", ProximityMatch: true, Distance: dist, Confidence: confidence, MatchType: sigType.String()}
 							atomic.AddInt64(&cachedPositiveCount, 1)
 							promCacheHits.WithLabelValues("positive").Inc()
 							goto endAnalysis
+						} else if dist <= softThreshold {
+							// Soft spam - close but not certain
+							confidence := getConfidenceForMatch(dist, softThreshold)
+							log.Printf("[Mailuminati] Oracle Cache Soft Match. Message-ID: %s | Subject: %s | Distance: %d | Type: %s", messageID, subject, dist, sigType.String())
+							if finalResult.Action != "spam" {
+								finalResult = AnalysisResult{Action: "soft_spam", Label: "oracle_cache_soft", ProximityMatch: true, Distance: dist, Confidence: confidence, MatchType: sigType.String()}
+							}
 						}
 					}
 				}
@@ -197,18 +261,28 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 				if err == nil {
 					isLocalSpam := false
 					for hash, dist := range distances {
-						if dist <= 70 {
+						if dist <= threshold {
 							// Check score
 							scoreKey := LocalScorePrefix + hash
 							scoreVal, _ := rdb.Get(ctx, scoreKey).Int64()
 
 							if scoreVal > 0 {
-								log.Printf("[Mailuminati] Local spam detected! Message-ID: %s | Subject: %s | Signature: %s | Match: %s | Score: %d", messageID, subject, sig, hash, scoreVal)
-								finalResult = AnalysisResult{Action: "spam", Label: "local_spam", ProximityMatch: true, Distance: dist}
+								confidence := getConfidenceForMatch(dist, threshold)
+								log.Printf("[Mailuminati] Local spam detected! Message-ID: %s | Subject: %s | Signature: %s | Match: %s | Score: %d | Type: %s", messageID, subject, sig, hash, scoreVal, sigType.String())
+								finalResult = AnalysisResult{Action: "spam", Label: "local_spam", ProximityMatch: true, Distance: dist, Confidence: confidence, MatchType: sigType.String()}
 								atomic.AddInt64(&localSpamCount, 1)
 								promLocalMatch.Inc()
 								isLocalSpam = true
 								break // A single match is enough
+							}
+						} else if dist <= softThreshold {
+							// Soft spam - close but not certain
+							scoreKey := LocalScorePrefix + hash
+							scoreVal, _ := rdb.Get(ctx, scoreKey).Int64()
+							if scoreVal > 0 && finalResult.Action != "spam" {
+								confidence := getConfidenceForMatch(dist, softThreshold)
+								log.Printf("[Mailuminati] Local soft match. Message-ID: %s | Subject: %s | Distance: %d | Type: %s", messageID, subject, dist, sigType.String())
+								finalResult = AnalysisResult{Action: "soft_spam", Label: "local_soft", ProximityMatch: true, Distance: dist, Confidence: confidence, MatchType: sigType.String()}
 							}
 						}
 					}
@@ -217,7 +291,7 @@ func analyzeHandler(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-			// If we reach here, distances were > 70
+			// If we reach here, distances were > threshold
 			finalResult.ProximityMatch = true
 			goto nextSignature // Stop here for this signature, as requested
 		}
@@ -267,12 +341,16 @@ endAnalysis:
 		Label          string   `json:"label,omitempty"`
 		ProximityMatch bool     `json:"proximity_match"`
 		Distance       int      `json:"distance,omitempty"`
+		Confidence     float64  `json:"confidence,omitempty"`
+		MatchType      string   `json:"match_type,omitempty"`
 		Hashes         []string `json:"hashes,omitempty"`
 	}{
 		Action:         finalResult.Action,
 		Label:          finalResult.Label,
 		ProximityMatch: finalResult.ProximityMatch,
 		Distance:       finalResult.Distance,
+		Confidence:     finalResult.Confidence,
+		MatchType:      finalResult.MatchType,
 		Hashes:         signatures,
 	}
 
@@ -494,6 +572,88 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	w.Write(respBytes)
+}
+
+func whitelistHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case http.MethodGet:
+		// List whitelist entries
+		domains, _ := rdb.SMembers(ctx, "mi:whitelist:domain").Result()
+		emails, _ := rdb.SMembers(ctx, "mi:whitelist:email").Result()
+		response := map[string]interface{}{
+			"domains": domains,
+			"emails":  emails,
+		}
+		respBytes, _ := json.Marshal(response)
+		w.WriteHeader(http.StatusOK)
+		w.Write(respBytes)
+
+	case http.MethodPost:
+		// Add to whitelist
+		var reqBody struct {
+			Type  string `json:"type"`  // "domain" or "email"
+			Value string `json:"value"` // domain or email address
+		}
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		reqBody.Value = strings.ToLower(strings.TrimSpace(reqBody.Value))
+		if reqBody.Value == "" {
+			http.Error(w, "Value cannot be empty", http.StatusBadRequest)
+			return
+		}
+
+		var key string
+		switch reqBody.Type {
+		case "domain":
+			key = "mi:whitelist:domain"
+		case "email":
+			key = "mi:whitelist:email"
+		default:
+			http.Error(w, "Type must be 'domain' or 'email'", http.StatusBadRequest)
+			return
+		}
+
+		rdb.SAdd(ctx, key, reqBody.Value)
+		log.Printf("[Mailuminati] Added to whitelist: %s=%s", reqBody.Type, reqBody.Value)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"added"}`))
+
+	case http.MethodDelete:
+		// Remove from whitelist
+		var reqBody struct {
+			Type  string `json:"type"`
+			Value string `json:"value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		reqBody.Value = strings.ToLower(strings.TrimSpace(reqBody.Value))
+		var key string
+		switch reqBody.Type {
+		case "domain":
+			key = "mi:whitelist:domain"
+		case "email":
+			key = "mi:whitelist:email"
+		default:
+			http.Error(w, "Type must be 'domain' or 'email'", http.StatusBadRequest)
+			return
+		}
+
+		rdb.SRem(ctx, key, reqBody.Value)
+		log.Printf("[Mailuminati] Removed from whitelist: %s=%s", reqBody.Type, reqBody.Value)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"removed"}`))
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func logRequestHandler(next http.HandlerFunc) http.HandlerFunc {
